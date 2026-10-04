@@ -1,0 +1,12 @@
+mediapipe==0.10.14
+opencv-python>=4.8,<4.11
+numpy<2
+pandas
+scikit-learn
+matplotlib
+onnxruntime
+pygame
+# Chỉ cần khi huấn luyện (Colab đã có sẵn torch):
+# torch
+# torchvision
+# onnx

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Drowsy Guard – Cảnh báo buồn ngủ</title>
+<style>
+:root{--bg:#0f1115;--card:#1a1d24cc;--tx:#f2f4f8;--mut:#9aa3b2;--ok:#34c759;--warn:#ffb020;--bad:#ff3b30;--cal:#8e98a8;--sa-t:env(safe-area-inset-top,0px);--sa-b:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+#app{position:fixed;inset:0;overflow:hidden;--c:var(--cal)}
+#app[data-s=NORMAL]{--c:var(--ok)}#app[data-s=DISTRACTED]{--c:var(--warn)}#app[data-s=DROWSY]{--c:var(--bad)}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+#frame{position:absolute;inset:0;border:8px solid var(--c);pointer-events:none;transition:border-color .2s}
+#app[data-s=DROWSY] #frame{animation:blink .6s infinite}@keyframes blink{50%{opacity:.25}}
+#top{position:absolute;left:0;right:0;top:0;padding:calc(var(--sa-t) + 12px) 16px 12px;background:linear-gradient(#000a,#0000);display:flex;justify-content:space-between;align-items:center}
+#stateText{font-size:26px;font-weight:800;color:var(--c);text-shadow:0 1px 4px #000}
+#fps{font-size:12px;color:var(--mut)}
+#hint{position:absolute;left:0;right:0;top:calc(var(--sa-t) + 64px);text-align:center;font-weight:600;text-shadow:0 1px 4px #000;padding:0 16px}
+#bar{position:absolute;left:24px;right:24px;top:calc(var(--sa-t) + 100px);height:6px;background:#fff3;border-radius:3px;overflow:hidden}#bar i{display:block;height:100%;width:0;background:var(--c)}
+#metrics{position:absolute;left:12px;bottom:calc(var(--sa-b) + 92px);background:var(--card);backdrop-filter:blur(6px);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.55;min-width:190px}
+#metrics b{font-variant-numeric:tabular-nums}
+#ctrl{position:absolute;left:0;right:0;bottom:0;padding:12px 12px calc(var(--sa-b) + 12px);display:flex;gap:8px;background:linear-gradient(#0000,#000b)}
+button{font:inherit;border:0;border-radius:12px;padding:12px 14px;background:#2a2f3a;color:var(--tx);font-weight:600;cursor:pointer}
+button.big{flex:1;background:var(--c);color:#111}button:active{transform:scale(.97)}
+.panel{position:absolute;inset:0;background:#0f1115f2;padding:calc(var(--sa-t) + 16px) 16px 16px;overflow:auto;display:none;z-index:5}.panel.on{display:block}
+.panel h2{margin:0 0 12px}.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #fff1}
+.ev{font-size:14px;padding:8px 0;border-bottom:1px solid #fff1;display:flex;justify-content:space-between}.ev.DROWSY{color:var(--bad)}.ev.DISTRACTED{color:var(--warn)}
+#start{position:absolute;inset:0;z-index:9;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:14px}
+#start h1{margin:0;font-size:30px}#start p{max-width:420px;color:var(--mut);margin:0;line-height:1.5}#start button{background:var(--ok);color:#06210f;font-size:18px;padding:14px 32px}
+#err{color:var(--bad);font-weight:600}
+</style>
+</head>
+<body>
+<div id="app" data-s="CALIBRATING">
+  <video id="v" playsinline muted></video><canvas id="c"></canvas><div id="frame"></div>
+  <div id="top"><div id="stateText">Sẵn sàng</div><div id="fps"></div></div>
+  <div id="hint"></div><div id="bar"><i></i></div>
+  <div id="metrics"></div>
+  <div id="ctrl">
+    <button id="bHist">📋</button><button id="bSet">⚙️</button><button id="bCal">↻</button>
+    <button class="big" id="bMute">🔇 Tắt còi</button><button id="bStop">⏹</button>
+  </div>
+  <div class="panel" id="pHist"><h2>Nhật ký cảnh báo</h2><div id="sum"></div><div id="evs"></div><p><button id="bClear">Xoá nhật ký</button> <button class="pc" data-close>Đóng</button></p></div>
+  <div class="panel" id="pSet"><h2>Cài đặt</h2>
+    <div class="row"><span>Độ nhạy mắt nhắm<br><small style="color:var(--mut)">Mắt nhỏ: tăng độ nhạy ít (kéo trái)</small></span><input id="sSens" type="range" min="0.60" max="0.90" step="0.01"></div>
+    <div class="row"><span>Âm thanh cảnh báo</span><input id="sSound" type="checkbox"></div>
+    <div class="row"><span>Rung (điện thoại)</span><input id="sVib" type="checkbox"></div>
+    <div class="row"><span>Hiện điểm landmark</span><input id="sDots" type="checkbox"></div>
+    <p><button data-close>Đóng</button></p></div>
+  <div id="start"><h1>👁️ Drowsy Guard</h1>
+    <p>Cảnh báo khi bạn có dấu hiệu buồn ngủ: nhắm mắt lâu, ngáp, gật đầu. Hình ảnh được xử lý <b>ngay trên thiết bị</b>, không gửi đi đâu.</p>
+    <p>Đặt thiết bị ngang tầm mặt, đủ sáng. Khi bắt đầu, hãy ngồi tự nhiên nhìn thẳng ~10 giây để hiệu chuẩn.</p>
+    <p><small>Đây là công cụ hỗ trợ, không thay thế việc nghỉ ngơi. Khi mệt, hãy dừng xe an toàn.</small></p>
+    <button id="bStart">Bắt đầu</button><div id="err"></div></div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
