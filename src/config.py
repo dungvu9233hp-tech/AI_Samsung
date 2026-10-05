@@ -4,7 +4,9 @@ from dataclasses import dataclass, asdict
 @dataclass
 class Config:
     # --- mắt ---
-    ear_factor: float = 0.75       # nhắm nếu EAR < ear_factor * EAR_mở (hiệu chuẩn cá nhân)
+    ear_factor: float = 0.60       # nhắm nếu EAR < ear_factor * EAR_mở (hiệu chuẩn cá nhân)
+    reopen_margin: float = 0.10     # trễ: đã nhắm thì phải mở hơn ngưỡng + margin*EAR_mở mới tính là mở
+    perclos_min_closed_s: float = 0.6  # PERCLOS chỉ tính khi đã nhắm liên tục >= giây này (chớp mắt không kích hoạt)
     p_closed_thr: float = 0.5      # ngưỡng xác suất 'nhắm' của CNN (mode dl)
     w_dl: float = 0.5              # trọng số nhánh DL trong mode fusion
     vote_n: int = 5                # majority vote n frame gần nhất

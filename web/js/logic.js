@@ -1,6 +1,6 @@
 // Bản port của src/alert.py (Python). Thời gian t (giây) truyền từ ngoài vào -> test được bằng dữ liệu giả.
 export const DEFAULTS = {
-  earFactor: 0.75, voteN: 5, marThr: 0.6, yawnHoldS: 1.0, nodDeg: 20, yawDeg: 35,
+  earFactor: 0.60, reopenMargin: 0.10, perclosMinClosedS: 0.6, voteN: 5, marThr: 0.6, yawnHoldS: 1.0, nodDeg: 20, yawDeg: 35,
   windowS: 30, minWindowS: 5, closedDurS: 1.5, perclosThr: 0.30, perclosYawnThr: 0.15,
   nodRatioThr: 0.30, yawnCountDrowsy: 3, yawnCountDistracted: 2, drowsyHoldS: 2.0,
   nofaceS: 2.0, calibS: 10,
@@ -42,8 +42,11 @@ export class DrowsinessLogic {
     while (this.yawns.length && t - this.yawns[0] > 300) this.yawns.shift();
     const { perclos, nodRatio, covered } = this.ratios(), ready = covered >= c.minWindowS, ny = this.yawns.length;
     // chỉ kích hoạt khi mắt ĐANG nhắm -> mở mắt là còi tắt sau drowsyHoldS
-    const drowsy = closedDur > c.closedDurS || (closed && ready && perclos > c.perclosThr) ||
-      (closed && ready && ny >= c.yawnCountDrowsy && perclos > c.perclosYawnThr);
+    // PERCLOS chỉ tính khi mắt đã nhắm liên tục >= perclosMinClosedS: chớp mắt (<0.5s) không bao giờ kích hoạt,
+    // kể cả khi PERCLOS trong cửa sổ còn cao sau một lần báo trước đó.
+    const sustained = closedDur >= c.perclosMinClosedS;
+    const drowsy = closedDur > c.closedDurS || (sustained && ready && perclos > c.perclosThr) ||
+      (sustained && ready && ny >= c.yawnCountDrowsy && perclos > c.perclosYawnThr);
     if (drowsy) this.drowsyUntil = t + c.drowsyHoldS;
     if (drowsy || t < this.drowsyUntil) this.state = 'DROWSY';
     else if (Math.abs(yawDev) > c.yawDeg || (ready && nodRatio > c.nodRatioThr) || ny >= c.yawnCountDistracted) this.state = 'DISTRACTED';
@@ -54,8 +57,8 @@ export class DrowsinessLogic {
 
 export class Decider {
   constructor(cfg = {}) { this.cfg = { ...DEFAULTS, ...cfg }; this.reset(); }
-  reset() { this.cal = new Calibrator(this.cfg.calibS); this.logic = new DrowsinessLogic(this.cfg); this.votes = []; this.nofaceSince = null; this.state = 'CALIBRATING'; this.closed = false; }
-  acknowledge() { this.logic = new DrowsinessLogic(this.cfg); this.votes = []; this.closed = false; this.state = this.cal.done ? 'NORMAL' : 'CALIBRATING'; }
+  reset() { this.cal = new Calibrator(this.cfg.calibS); this.logic = new DrowsinessLogic(this.cfg); this.votes = []; this.rawClosed = false; this.nofaceSince = null; this.state = 'CALIBRATING'; this.closed = false; }
+  acknowledge() { this.logic = new DrowsinessLogic(this.cfg); this.votes = []; this.rawClosed = false; this.closed = false; this.state = this.cal.done ? 'NORMAL' : 'CALIBRATING'; }
   info(f, o = {}) {
     return { state: this.state, calibrating: !this.cal.done, calibProgress: 0, noface: !f.face, ear: f.ear, mar: f.mar, closed: this.closed,
       perclos: 0, closedDur: 0, yawns: 0, nodRatio: 0, pitchDev: 0, yawDev: 0, earThr: NaN, ...o };
@@ -73,7 +76,10 @@ export class Decider {
       this.state = this.cal.done ? 'NORMAL' : 'CALIBRATING';
       return this.info(f, { calibProgress: this.cal.progress(t) });
     }
-    this.votes.push(f.ear < c.earFactor * this.cal.earOpen);
+    // Trễ (hysteresis): đã nhắm thì phải mở rõ hơn một chút mới tính là mở -> không nhấp nháy ở ngưỡng
+    const thr = (c.earFactor + (this.rawClosed ? c.reopenMargin : 0)) * this.cal.earOpen;
+    this.rawClosed = f.ear < thr;
+    this.votes.push(this.rawClosed);
     if (this.votes.length > c.voteN) this.votes.shift();
     this.closed = this.votes.filter(Boolean).length > this.votes.length / 2;
     const pd = f.pitch - this.cal.pitch0, yd = f.yaw - this.cal.yaw0;

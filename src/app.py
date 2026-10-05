@@ -52,6 +52,22 @@ def draw_ui(frame, info, mode, fps, log_lines, ear_hist, muted=False):
         cv2.putText(frame, "EAR", (w - 190, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
 
 
+def open_camera(index):
+    """Windows hay lỗi với backend mặc định (MSMF): thử DSHOW rồi MSMF, rồi các chỉ số camera khác."""
+    import sys
+    backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY] if sys.platform == "win32" else [cv2.CAP_ANY]
+    for idx in [index] + [i for i in range(4) if i != index]:
+        for be in backends:
+            cap = cv2.VideoCapture(idx, be)
+            if cap.isOpened():
+                ok, _ = cap.read()
+                if ok:
+                    print(f"[camera] Mở được camera {idx} (backend {be})")
+                    return cap
+            cap.release()
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="auto", choices=["auto", "landmark", "dl", "fusion"])
@@ -62,7 +78,7 @@ def main():
     ap.add_argument("--dl-stride", type=int, default=2)
     ap.add_argument("--calib", type=float, default=10.0)
     ap.add_argument("--no-sound", action="store_true")
-    ap.add_argument("--ear-factor", type=float, default=0.75, help="nhắm nếu EAR < factor*EAR_mở (mắt nhỏ: thử 0.65-0.7)")
+    ap.add_argument("--ear-factor", type=float, default=0.60, help="nhắm nếu EAR < factor*EAR_mở (thấp = phải nhắm hẳn; cao = nhíu mắt cũng tính)")
     ap.add_argument("--p-thr", type=float, default=0.5, help="ngưỡng xác suất nhắm của CNN (mode dl)")
     ap.add_argument("--w-dl", type=float, default=0.5, help="trọng số CNN trong fusion (0=chỉ landmark, 1=chỉ CNN)")
     ap.add_argument("--log", default="logs/alerts.csv")
@@ -77,25 +93,30 @@ def main():
     dec = Decider(mode, cfg)
     sound, logger = AlarmPlayer(not a.no_sound), EventLogger(a.log)
 
-    cap = cv2.VideoCapture(a.video if a.video else a.camera)
-    if not cap.isOpened():
-        raise SystemExit("Không mở được camera/video")
+    cap = cv2.VideoCapture(a.video) if a.video else open_camera(a.camera)
+    if cap is None or not cap.isOpened():
+        raise SystemExit("Không mở được camera/video. Đóng Zoom/Teams/Chrome đang dùng camera, "
+                         "và bật Settings > Privacy > Camera > 'Let desktop apps access your camera'.")
     fps, t_prev, ear_hist, mute_until = 0.0, time.time(), deque(maxlen=150), 0.0
+    vfps = (cap.get(cv2.CAP_PROP_FPS) or 30.0) if a.video else None   # video: dùng đồng hồ của VIDEO
+    n_frame = 0
     while True:
         ok, frame = cap.read()
         if not ok: break
         if frame.shape[1] != a.width:
             frame = cv2.resize(frame, (a.width, int(frame.shape[0] * a.width / frame.shape[1])))
-        t = time.time()
+        now = time.time()
+        t = (n_frame / vfps) if a.video else now      # video file: thời gian theo frame, không theo tốc độ xử lý
+        n_frame += 1
         f = ext.extract(frame)
         info = dec.update(t, f)
         if f["face"]:
             ear_hist.append(f["ear"])
-        muted = t < mute_until
+        muted = now < mute_until
         sound.set(info["state"] == "DROWSY" and not muted)
         logger.update(info)
-        fps = 0.9 * fps + 0.1 / max(t - t_prev, 1e-3) if fps else 1 / max(t - t_prev, 1e-3)
-        t_prev = t
+        fps = 0.9 * fps + 0.1 / max(now - t_prev, 1e-3) if fps else 1 / max(now - t_prev, 1e-3)
+        t_prev = now
         if not a.video:
             frame = cv2.flip(frame, 1)   # chỉ lật để HIỂN THỊ kiểu gương; xử lý đã làm trên ảnh gốc
         draw_ui(frame, info, mode, fps, logger.recent, ear_hist, muted)

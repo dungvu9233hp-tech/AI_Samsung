@@ -8,7 +8,7 @@ const MODEL_REMOTE = 'https://storage.googleapis.com/mediapipe-models/face_landm
 const load = (k, d) => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') }; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-let settings = load('dg.settings', { sens: 0.75, sound: true, vib: true, dots: false });
+let settings = load('dg.settings.v2', { sens: 0.60, sound: true, vib: true, dots: false });
 let events = (() => { try { return JSON.parse(localStorage.getItem('dg.events') || '[]'); } catch { return []; } })();
 const dec = new Decider({ earFactor: settings.sens });
 let landmarker, stream, running = false, lastVT = -1, muteUntil = 0, lastState = null, wake = null, fpsAcc = 0, fpsN = 0, fpsT = performance.now(), sessionStart = 0;
@@ -70,7 +70,8 @@ function loop() {
     const lm = res.faceLandmarks?.[0];
     if (lm) {
       const pose = res.facialTransformationMatrixes?.[0] ? poseFromMatrix(res.facialTransformationMatrixes[0].data) : { pitch: 0, yaw: 0 };
-      f = { face: true, ear: (ear(lm, L_EYE, w, h) + ear(lm, R_EYE, w, h)) / 2, mar: mar(lm, w, h), ...pose };
+      // ear = mắt MỞ HƠN trong hai mắt: phải nhắm cả hai mới tính là nhắm (nháy một mắt không báo)
+      f = { face: true, ear: Math.max(ear(lm, L_EYE, w, h), ear(lm, R_EYE, w, h)), mar: mar(lm, w, h), ...pose };
     }
     dec.cfg.earFactor = settings.sens;
     const info = dec.update(t0 / 1000, f);
@@ -91,7 +92,7 @@ function render(i) {
   $('app').dataset.s = i.state; $('stateText').textContent = LABEL[i.state];
   $('hint').textContent = i.calibrating ? 'Ngồi tự nhiên, nhìn thẳng vào camera…' : i.noface ? 'Không thấy khuôn mặt' : '';
   $('bar').style.display = i.calibrating ? 'block' : 'none'; $('bar').firstChild.style.width = pct(i.calibProgress);
-  $('metrics').innerHTML = `EAR <b>${n2(i.ear)}</b> / ngưỡng <b>${n2(i.earThr)}</b> · mắt <b>${i.closed ? 'NHẮM' : 'mở'}</b><br>` +
+  $('metrics').innerHTML = `EAR (2 mắt) <b>${n2(i.ear)}</b> / ngưỡng <b>${n2(i.earThr)}</b> · mắt <b>${i.closed ? 'NHẮM' : 'mở'}</b><br>` +
     `MAR <b>${n2(i.mar)}</b> · ngáp (5 phút) <b>${i.yawns}</b><br>PERCLOS <b>${pct(i.perclos)}</b> · nhắm <b>${i.closedDur.toFixed(1)}s</b><br>` +
     `Cúi <b>${Number.isFinite(i.pitchDev) ? i.pitchDev.toFixed(0) : '--'}°</b> · Quay <b>${Number.isFinite(i.yawDev) ? i.yawDev.toFixed(0) : '--'}°</b>`;
   setAlarm(i.state === 'DROWSY' && settings.sound && performance.now() > muteUntil);
@@ -116,7 +117,7 @@ $('bHist').onclick = () => { renderHistory(); panel('pHist', true); }; $('bSet')
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => { panel('pHist', false); panel('pSet', false); });
 $('bClear').onclick = () => { events = []; save('dg.events', events); renderHistory(); };
 $('sSens').value = settings.sens; $('sSound').checked = settings.sound; $('sVib').checked = settings.vib; $('sDots').checked = settings.dots;
-$('sSens').oninput = e => { settings.sens = +e.target.value; save('dg.settings', settings); };
-for (const [id, k] of [['sSound', 'sound'], ['sVib', 'vib'], ['sDots', 'dots']]) $(id).onchange = e => { settings[k] = e.target.checked; save('dg.settings', settings); };
+$('sSens').oninput = e => { settings.sens = +e.target.value; save('dg.settings.v2', settings); };
+for (const [id, k] of [['sSound', 'sound'], ['sVib', 'vib'], ['sDots', 'dots']]) $(id).onchange = e => { settings[k] = e.target.checked; save('dg.settings.v2', settings); };
 document.addEventListener('visibilitychange', async () => { if (running && document.visibilityState === 'visible') { try { wake = await navigator.wakeLock?.request('screen'); } catch {} } });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -76,9 +76,10 @@ class DrowsinessLogic:
 
         # Chỉ kích hoạt khi mắt ĐANG nhắm -> mở mắt ra là còi tắt sau drowsy_hold_s,
         # không bị "dính" theo PERCLOS của cả cửa sổ 30 s.
+        sustained = closed_dur >= c.perclos_min_closed_s
         drowsy = closed_dur > c.closed_dur_s \
-            or (closed and ready and perclos > c.perclos_thr) \
-            or (closed and ready and ny >= c.yawn_count_drowsy and perclos > c.perclos_yawn_thr)
+            or (sustained and ready and perclos > c.perclos_thr) \
+            or (sustained and ready and ny >= c.yawn_count_drowsy and perclos > c.perclos_yawn_thr)
         if drowsy:
             self._drowsy_until = t + c.drowsy_hold_s
         if drowsy or t < self._drowsy_until:
@@ -103,16 +104,24 @@ class Decider:
         self.logic = DrowsinessLogic(self.cfg)
         self.votes = deque(maxlen=self.cfg.vote_n)
         self.noface_since, self.state, self.closed = None, "CALIBRATING", False
+        self.raw_closed = False
 
     def acknowledge(self):
         """Người dùng chủ động tắt cảnh báo: xoá cửa sổ, về NORMAL."""
         self.logic = DrowsinessLogic(self.cfg)
         self.votes.clear()
         self.state, self.closed = ("NORMAL" if self.cal.done else "CALIBRATING"), False
+        self.raw_closed = False
 
     def _closed_raw(self, f):
+        r = bool(self._closed_raw_inner(f))
+        self.raw_closed = r
+        return r
+
+    def _closed_raw_inner(self, f):
         c, eo = self.cfg, self.cal.ear_open
-        lm = f["ear"] < c.ear_factor * eo
+        thr = (c.ear_factor + (c.reopen_margin if self.raw_closed else 0.0)) * eo   # trễ chống nhấp nháy
+        lm = f["ear"] < thr
         p = f["p_eye"]
         if self.mode == "landmark" or np.isnan(p):
             return lm

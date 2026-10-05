@@ -35,7 +35,7 @@ class FeatureExtractor:
             out["t_lm"] = time.perf_counter() - t0
             return out
         h, w = frame.shape[:2]
-        out["ear"] = float((ear(pts, L_EYE) + ear(pts, R_EYE)) / 2)
+        out["ear"] = float(max(ear(pts, L_EYE), ear(pts, R_EYE)))   # cả HAI mắt nhắm mới tính nhắm
         out["mar"] = float(mar(pts))
         out["pitch"], out["yaw"], _ = head_pose(pts, w, h)
         out["t_lm"] = time.perf_counter() - t0
@@ -46,7 +46,7 @@ class FeatureExtractor:
             pe = py = NAN
             if self.eye_clf is not None:
                 crops = [c for c in (crop_eye(gray, pts, EYE_CROP_L), crop_eye(gray, pts, EYE_CROP_R)) if c is not None]
-                if crops: pe = float(self.eye_clf.probs(crops).mean())
+                if crops: pe = float(self.eye_clf.probs(crops).min())   # nhắm 1 mắt (nháy mắt) không tính
             if self.yawn_clf is not None:
                 c = crop_mouth(gray, pts)
                 if c is not None: py = float(self.yawn_clf.probs([c])[0])
