@@ -13,6 +13,7 @@ class Config:
     # --- miệng / ngáp ---
     mar_thr: float = 0.6
     yawn_hold_s: float = 1.0       # miệng mở liên tục >= giây này mới tính 1 lần ngáp
+    yawn_alarm_s: float = 3.0      # còi kêu bao lâu mỗi lần ngáp (từ lần thứ yawn_count_drowsy trở đi)
     # --- đầu ---
     nod_deg: float = 20.0          # lệch pitch so với tư thế chuẩn
     yaw_deg: float = 35.0

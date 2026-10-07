@@ -61,10 +61,12 @@ class DrowsinessLogic:
             self.closed_since = None
         closed_dur = (t - self.closed_since) if self.closed_since is not None else 0.0
 
+        counted_now = False                # True ở đúng frame vừa đếm thêm 1 lần ngáp
         if yawn_raw:
             if self._y_since is None: self._y_since = t
             if not self._y_counted and t - self._y_since >= c.yawn_hold_s:
                 self.yawn_times.append(t); self._y_counted = True
+                counted_now = True
         else:
             self._y_since, self._y_counted = None, False
         while self.yawn_times and t - self.yawn_times[0] > 300:
@@ -74,6 +76,11 @@ class DrowsinessLogic:
         ready = covered >= c.min_window_s
         ny = len(self.yawn_times)
 
+        # Ngáp từ lần thứ yawn_count_drowsy trở đi (trong 5 phút): còi kêu yawn_alarm_s giây
+        # cho MỖI lần ngáp, không cần mắt nhắm và không kêu liên tục suốt 5 phút.
+        if counted_now and ny >= c.yawn_count_drowsy:
+            self._drowsy_until = t + c.yawn_alarm_s
+
         # Chỉ kích hoạt khi mắt ĐANG nhắm -> mở mắt ra là còi tắt sau drowsy_hold_s,
         # không bị "dính" theo PERCLOS của cả cửa sổ 30 s.
         sustained = closed_dur >= c.perclos_min_closed_s
@@ -81,7 +88,7 @@ class DrowsinessLogic:
             or (sustained and ready and perclos > c.perclos_thr) \
             or (sustained and ready and ny >= c.yawn_count_drowsy and perclos > c.perclos_yawn_thr)
         if drowsy:
-            self._drowsy_until = t + c.drowsy_hold_s
+            self._drowsy_until = max(self._drowsy_until, t + c.drowsy_hold_s)
         if drowsy or t < self._drowsy_until:
             self.state = "DROWSY"
         elif abs(yaw_dev) > c.yaw_deg or (ready and nod_ratio > c.nod_ratio_thr) \
