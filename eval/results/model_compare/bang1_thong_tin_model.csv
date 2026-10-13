@@ -1,0 +1,4 @@
+﻿Model,Kiến trúc,Tham số,Dung lượng (KB),Độ trễ (ms/khung),Dữ liệu huấn luyện
+Cũ: SmallCNN (MRL),SmallCNN,n/a,246,0.42,MRL
+Mới: SmallCNN (MRL+bus),SmallCNN,n/a,246,0.44,MRL + bus
+Mới: MobileNetV3 (MRL+bus),MobileNetV3-small,n/a,5949,1.8,MRL + bus

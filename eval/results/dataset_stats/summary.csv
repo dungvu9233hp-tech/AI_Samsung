@@ -1,0 +1,4 @@
+dataset,n_total,n_closed,n_open,closed_ratio,n_groups,per_group_min,per_group_median,per_group_max,groups_one_class,n_loaded,w_median,w_min,h_median,h_min,mean_closed_median,mean_open_median,auc_mean,std_closed_median,std_open_median,auc_std,sharp_closed_median,sharp_open_median,auc_sharp,auc_area,dup_unique,dup_dup_groups,dup_dup_rows,dup_label_conflicts,bus_adjacent_cross_split
+cew,4846,2384,2462,0.492,2423,2,2.0,2,2423,4846,24.0,24,24.0,24,139.57,116.87,0.671,31.75,33.64,0.452,388.48,366.87,0.512,0.5,4846,0,0,0,
+bus,4966,2066,2900,0.416,42,14,118.5,189,1,4966,54.0,25,54.0,24,183.28,177.43,0.519,34.73,38.35,0.366,105.35,167.71,0.347,0.549,4966,0,0,0,1141.0
+mrl,84898,41946,42952,0.494,37,382,1114.0,10257,2,20000,87.0,52,87.0,52,79.28,87.15,0.366,14.5,16.39,0.371,17.67,21.37,0.428,0.589,84860,38,38,33,
