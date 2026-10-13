@@ -11,11 +11,11 @@ NAN = float("nan")
 
 
 class FeatureExtractor:
-    def __init__(self, models_dir="models", use_dl=True, dl_stride=2):
+    def __init__(self, models_dir="models", use_dl=True, dl_stride=2, eye_model="eye.onnx"):
         self.det = FaceDetector()
         self.eye_clf = self.yawn_clf = None
         if use_dl:
-            pe, py = os.path.join(models_dir, "eye.onnx"), os.path.join(models_dir, "yawn.onnx")
+            pe, py = os.path.join(models_dir, eye_model), os.path.join(models_dir, "yawn.onnx")
             if os.path.exists(pe): self.eye_clf = ONNXClassifier(pe)
             if os.path.exists(py): self.yawn_clf = ONNXClassifier(py)
         self.stride, self.n, self._cache = max(1, dl_stride), 0, (NAN, NAN)

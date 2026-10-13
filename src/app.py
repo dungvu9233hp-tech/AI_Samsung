@@ -82,9 +82,10 @@ def main():
     ap.add_argument("--p-thr", type=float, default=0.5, help="ngưỡng xác suất nhắm của CNN (mode dl)")
     ap.add_argument("--w-dl", type=float, default=0.5, help="trọng số CNN trong fusion (0=chỉ landmark, 1=chỉ CNN)")
     ap.add_argument("--log", default="logs/alerts.csv")
+    ap.add_argument("--eye-model", default="eye_mbv3.onnx", help="tên file model mắt trong thư mục models")
     a = ap.parse_args()
 
-    ext = FeatureExtractor(a.models, use_dl=a.mode != "landmark", dl_stride=a.dl_stride)
+    ext = FeatureExtractor(a.models, use_dl=a.mode != "landmark", dl_stride=a.dl_stride, eye_model=a.eye_model)
     mode = a.mode if a.mode != "auto" else ("fusion" if ext.has_dl else "landmark")
     if mode != "landmark" and not ext.has_dl:
         print("Không thấy model trong", a.models, "-> dùng landmark"); mode = "landmark"
