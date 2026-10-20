@@ -4,6 +4,9 @@ export const DEFAULTS = {
   windowS: 30, minWindowS: 5, closedDurS: 1.5, perclosThr: 0.30, perclosYawnThr: 0.15,
   nodRatioThr: 0.30, yawnCountDrowsy: 3, yawnCountDistracted: 2, drowsyHoldS: 2.0,
   nofaceS: 2.0, calibS: 10,
+  mode: 'landmark',      // 'landmark' | 'dl' | 'fusion' (port của Decider.mode trong alert.py)
+  pClosedThr: 0.5,       // ngưỡng xác suất 'nhắm' của CNN (mode dl)
+  wDl: 0.5,              // trọng số CNN trong fusion
 };
 const median = a => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
 
@@ -59,8 +62,23 @@ export class Decider {
   constructor(cfg = {}) { this.cfg = { ...DEFAULTS, ...cfg }; this.reset(); }
   reset() { this.cal = new Calibrator(this.cfg.calibS); this.logic = new DrowsinessLogic(this.cfg); this.votes = []; this.rawClosed = false; this.nofaceSince = null; this.state = 'CALIBRATING'; this.closed = false; }
   acknowledge() { this.logic = new DrowsinessLogic(this.cfg); this.votes = []; this.rawClosed = false; this.closed = false; this.state = this.cal.done ? 'NORMAL' : 'CALIBRATING'; }
+  // Port của Decider._closed_raw_inner (alert.py): landmark / dl / fusion. Không có pEye (NaN) -> rơi về landmark.
+  closedRaw(f) {
+    const c = this.cfg, eo = this.cal.earOpen;
+    const thr = (c.earFactor + (this.rawClosed ? c.reopenMargin : 0)) * eo;   // trễ chống nhấp nháy
+    const lm = f.ear < thr, p = f.pEye;
+    let r;
+    if (c.mode === 'landmark' || !Number.isFinite(p)) r = lm;
+    else if (c.mode === 'dl') r = p > c.pClosedThr;
+    else {
+      const sLm = Math.min(Math.max((1 - f.ear / eo) / (1 - c.earFactor), 0), 1);
+      r = (1 - c.wDl) * sLm + c.wDl * p > 0.5;
+    }
+    this.rawClosed = r;
+    return r;
+  }
   info(f, o = {}) {
-    return { state: this.state, calibrating: !this.cal.done, calibProgress: 0, noface: !f.face, ear: f.ear, mar: f.mar, closed: this.closed,
+    return { state: this.state, calibrating: !this.cal.done, calibProgress: 0, noface: !f.face, ear: f.ear, mar: f.mar, pEye: f.pEye, closed: this.closed,
       perclos: 0, closedDur: 0, yawns: 0, nodRatio: 0, pitchDev: 0, yawDev: 0, earThr: NaN, ...o };
   }
   update(t, f) {
@@ -76,10 +94,7 @@ export class Decider {
       this.state = this.cal.done ? 'NORMAL' : 'CALIBRATING';
       return this.info(f, { calibProgress: this.cal.progress(t) });
     }
-    // Trễ (hysteresis): đã nhắm thì phải mở rõ hơn một chút mới tính là mở -> không nhấp nháy ở ngưỡng
-    const thr = (c.earFactor + (this.rawClosed ? c.reopenMargin : 0)) * this.cal.earOpen;
-    this.rawClosed = f.ear < thr;
-    this.votes.push(this.rawClosed);
+    this.votes.push(this.closedRaw(f));
     if (this.votes.length > c.voteN) this.votes.shift();
     this.closed = this.votes.filter(Boolean).length > this.votes.length / 2;
     const pd = f.pitch - this.cal.pitch0, yd = f.yaw - this.cal.yaw0;

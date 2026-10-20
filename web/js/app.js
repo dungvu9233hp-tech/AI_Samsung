@@ -1,6 +1,7 @@
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 import { Decider } from "./logic.js";
 import { ear, mar, poseFromMatrix, L_EYE, R_EYE } from "./features.js";
+import { EyeModel } from "./dl.js";
 
 const $ = id => document.getElementById(id);
 const LABEL = { CALIBRATING: 'Đang hiệu chuẩn…', NORMAL: 'Bình thường', DISTRACTED: 'Mất tập trung', DROWSY: 'BUỒN NGỦ – NGHỈ NGAY!' };
@@ -9,8 +10,16 @@ const load = (k, d) => { try { return { ...d, ...JSON.parse(localStorage.getItem
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
 let settings = load('dg.settings.v2', { sens: 0.60, sound: true, vib: true, dots: false });
+// ---------- Nhánh DL (CNN mắt) ----------  Đổi bằng URL: ?mode=landmark|dl|fusion  &stride=2  &model=eye.onnx
+const qs = new URLSearchParams(location.search);
+const DL = {
+  mode: ['landmark', 'dl', 'fusion'].includes(qs.get('mode')) ? qs.get('mode') : 'fusion',
+  stride: Math.max(1, parseInt(qs.get('stride')) || 2),                       // chạy CNN cách (stride-1) khung
+  url: 'models/' + (/^[\w.-]+\.onnx$/.test(qs.get('model') || '') ? qs.get('model') : 'eye_mbv3.onnx'),
+};
+let eyeModel = null, eyeBusy = false, lastP = NaN, frameN = 0, dlMs = 0, dlNote = '';
 let events = (() => { try { return JSON.parse(localStorage.getItem('dg.events') || '[]'); } catch { return []; } })();
-const dec = new Decider({ earFactor: settings.sens });
+const dec = new Decider({ earFactor: settings.sens, mode: DL.mode });
 let landmarker, stream, running = false, lastVT = -1, muteUntil = 0, lastState = null, wake = null, fpsAcc = 0, fpsN = 0, fpsT = performance.now(), sessionStart = 0;
 const v = $('v'), cv = $('c'), cx = cv.getContext('2d');
 
@@ -47,6 +56,11 @@ async function start() {
     v.srcObject = stream; await v.play();
     $('bStart').disabled = true; $('bStart').textContent = 'Đang tải mô hình…';
     landmarker = landmarker || await createLandmarker();
+    if (DL.mode !== 'landmark' && !eyeModel) {   // lỗi tải CNN -> vẫn chạy được bằng landmark
+      $('bStart').textContent = 'Đang tải mô hình mắt…';
+      try { eyeModel = await EyeModel.create(DL.url); dlNote = ''; }
+      catch (e) { console.warn('CNN mắt:', e); dec.cfg.mode = 'landmark'; dlNote = 'CNN lỗi → landmark'; }
+    }
     try { wake = await navigator.wakeLock?.request('screen'); } catch {}
     dec.reset(); lastState = null; sessionStart = Date.now(); running = true; $('start').style.display = 'none'; loop();
   } catch (e) {
@@ -74,6 +88,19 @@ function loop() {
       f = { face: true, ear: Math.max(ear(lm, L_EYE, w, h), ear(lm, R_EYE, w, h)), mar: mar(lm, w, h), ...pose };
     }
     dec.cfg.earFactor = settings.sens;
+    // CNN chạy bất đồng bộ, cách DL.stride khung; mỗi khung dùng kết quả gần nhất (giống cache trong extractor.py)
+    f.pEye = NaN;
+    if (eyeModel && dec.cfg.mode !== 'landmark') {
+      if (lm) {
+        frameN++;
+        if (!eyeBusy && (frameN % DL.stride === 0 || Number.isNaN(lastP))) {
+          eyeBusy = true; const t1 = performance.now();
+          eyeModel.predict(v, lm).then(p => { lastP = p; dlMs = performance.now() - t1; })
+            .catch(e => { console.warn(e); lastP = NaN; }).finally(() => { eyeBusy = false; });
+        }
+        f.pEye = lastP;
+      } else lastP = NaN;
+    }
     const info = dec.update(t0 / 1000, f);
     draw(lm); render(info);
     fpsAcc += 1; if (performance.now() - fpsT > 1000) { $('fps').textContent = fpsAcc + ' FPS'; fpsAcc = 0; fpsT = performance.now(); }
@@ -94,7 +121,8 @@ function render(i) {
   $('bar').style.display = i.calibrating ? 'block' : 'none'; $('bar').firstChild.style.width = pct(i.calibProgress);
   $('metrics').innerHTML = `EAR (2 mắt) <b>${n2(i.ear)}</b> / ngưỡng <b>${n2(i.earThr)}</b> · mắt <b>${i.closed ? 'NHẮM' : 'mở'}</b><br>` +
     `MAR <b>${n2(i.mar)}</b> · ngáp (5 phút) <b>${i.yawns}</b><br>PERCLOS <b>${pct(i.perclos)}</b> · nhắm <b>${i.closedDur.toFixed(1)}s</b><br>` +
-    `Cúi <b>${Number.isFinite(i.pitchDev) ? i.pitchDev.toFixed(0) : '--'}°</b> · Quay <b>${Number.isFinite(i.yawDev) ? i.yawDev.toFixed(0) : '--'}°</b>`;
+    `Cúi <b>${Number.isFinite(i.pitchDev) ? i.pitchDev.toFixed(0) : '--'}°</b> · Quay <b>${Number.isFinite(i.yawDev) ? i.yawDev.toFixed(0) : '--'}°</b>` +
+    `<br>Mode <b>${dec.cfg.mode}</b> · CNN mắt <b>${n2(i.pEye)}</b>${dlMs ? ` · ${dlMs.toFixed(0)}ms` : ''}${dlNote ? ` · <span style="color:var(--warn)">${dlNote}</span>` : ''}`;
   setAlarm(i.state === 'DROWSY' && settings.sound && performance.now() > muteUntil);
   if (i.state !== lastState && i.state !== 'CALIBRATING') {
     if (lastState !== null) { events.push({ t: Date.now(), s: i.state, perclos: +i.perclos.toFixed(3), ear: +(i.ear || 0).toFixed(3) }); events = events.slice(-500); save('dg.events', events); }
